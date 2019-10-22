@@ -32,20 +32,7 @@ class Jira
 
   def readReferenceSheet
     @referenceSheet = @workbook.sheets[1].rows.map(&:values)
-    customerName = nil
-    tab = nil
-    # @referenceSheet.each do |arr|
-    #   if arr[0].nil?
-    #     arr[0] = customerName
-    #   else
-    #     customerName = arr[0]
-    #   end
-    #   if arr[1].nil?
-    #     arr[1] = tab
-    #   else
-    #     tab = arr[1]
-    #   end
-    # end
+
     @referenceSheet.each_cons(2) do |first, last|
       last[0] ||= first[0] if (last[0].nil? or last[0].to_s.empty?)
       last[1] ||= first[1] if (last[1].nil? or last[1].to_s.empty?)
@@ -55,13 +42,24 @@ class Jira
   end
 
   def readInputSheet
+    #Read the sheet and group the value by company name and Daily/Weekly
     @inputSheet = @workbook.sheets[0].rows.map(&:values).drop(1).group_by { |x| [x[0], x[1]] }
     self
   end
 
   def fetchAndWrite
     @inputSheet.each.with_index(1) do |(k, arrs), index|
-
+      #Read the Epic Key and Epic Name to form the Hash : (Epic Key=>Epic Name)
+      @b.textarea(id: 'advanced-search').set "project = #{k.first[0..2]} AND issuetype = Epic", :return
+      FileUtils.rm_rf Dir.glob(File.expand_path("Downloads/*"))
+      @b.span(text: 'Export').click
+      @b.link(id: 'currentCsvFields').click
+      p Dir.glob(File.expand_path("Downloads/*")).first
+      @b.wait_until { Dir.glob(File.expand_path("Downloads/*")).count > 0 }
+      table = CSV.read(Dir.glob(File.expand_path("Downloads/*")).first)
+      table = table.transpose.select { |x| x[0].eql? 'Issue key' or x[0].eql? 'Custom field (Epic Name)' }
+      issue_key = table[0].zip(table[1]).to_h
+      ####
       workBook = WriteExcel.new
       arrs.each do |arr|
         sheet = workBook.createSheet(arr[2])
@@ -86,6 +84,10 @@ class Jira
           end
           table = CSV.read(filename)
           table = @reference[[arr[0], arr[2]]].map { |row| table.transpose.select { |tableRow| tableRow[0].eql? row[2] }.pop }.reject { |x| x.to_s.empty? }.transpose unless @reference[[arr[0], arr[2]]].nil?
+
+          resultColumn = @reference[[arr[0], arr[2]]].map { |x| x[2] }
+          p resultColumn
+          table = table.transpose.select { |x| resultColumn.include? x[0].strip }.transpose
 
           h = @referenceSheet.drop(1).each_with_object({}) do |value, h|
             h[value[2]] = value[4]
