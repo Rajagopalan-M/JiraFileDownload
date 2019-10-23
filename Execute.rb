@@ -21,9 +21,9 @@ class Jira
     @b = Watir::Browser.new :chrome, options: {prefs: prefs}, args: ['user-data-dir=C:\RajagopalanM']
     @b.window.maximize
     @b.goto 'https://jira.sapiens.com/secure/Dashboard.jspa'
-    @b.text_field(name: 'os_username').set 'rajagopalan.m'
-    @b.text_field(name: 'os_password').set 'gopalan@456'
-    @b.button(name: 'login').click
+    # @b.text_field(name: 'os_username').set 'rajagopalan.m'
+    # @b.text_field(name: 'os_password').set 'gopalan@456'
+    # @b.button(name: 'login').click
     @b.element(link: 'Issues').click
     @b.element(link: 'Search for issues').click
     @b.element(link: 'Advanced').click unless @b.element(link: 'Basic').present?
@@ -50,12 +50,16 @@ class Jira
   def fetchAndWrite
     @inputSheet.each.with_index(1) do |(k, arrs), index|
       #Read the Epic Key and Epic Name to form the Hash : (Epic Key=>Epic Name)
-      @b.textarea(id: 'advanced-search').set "project = #{k.first[0..2]} AND issuetype = Epic", :return
+      @b.textarea(id: 'advanced-search').set "project = #{k.first[0..3]} AND issuetype = Epic", :return
       FileUtils.rm_rf Dir.glob(File.expand_path("Downloads/*"))
       @b.span(text: 'Export').click
       @b.link(id: 'currentCsvFields').click
-      p Dir.glob(File.expand_path("Downloads/*")).first
-      @b.wait_until { Dir.glob(File.expand_path("Downloads/*")).count > 0 }
+      sleep 1
+      @b.wait_while do
+        @b.wait_until { Dir.glob(File.expand_path("Downloads/*")).count > 0 }
+        filename = Dir.glob(File.expand_path("Downloads\\*.*")).last
+        filename.include? 'crdownload'
+      end
       table = CSV.read(Dir.glob(File.expand_path("Downloads/*")).first)
       table = table.transpose.select { |x| x[0].eql? 'Issue key' or x[0].eql? 'Custom field (Epic Name)' }
       issue_key = table[0].zip(table[1]).to_h
@@ -85,23 +89,34 @@ class Jira
           table = CSV.read(filename)
           table = @reference[[arr[0], arr[2]]].map { |row| table.transpose.select { |tableRow| tableRow[0].eql? row[2] }.pop }.reject { |x| x.to_s.empty? }.transpose unless @reference[[arr[0], arr[2]]].nil?
 
-          resultColumn = @reference[[arr[0], arr[2]]].map { |x| x[2] }
-          p resultColumn
-          table = table.transpose.select { |x| resultColumn.include? x[0].strip }.transpose
+          resultColumn = @reference[[arr[0], arr[2]]].map { |x| x[4] } unless @reference[[arr[0], arr[2]]].nil?
 
+          #Form the reference hash(this is used for replacing the csv headers with our headers)
           h = @referenceSheet.drop(1).each_with_object({}) do |value, h|
             h[value[2]] = value[4]
           end
+          # Changing the table header with the our header.
           table[0].each_with_index do |v, index|
             table[0][index] = h[v]
           end
+          #Replace the Epic Key with Epic Name
+          ind = nil
+          table.each_with_index do |row, index|
+            if index.eql? 0
+              ind = row.index("Epic Link")
+              # row[4] = 'Epic Name'
+              next
+            end
+            row[ind] = issue_key[row[ind]]
+          end
+          table = table.transpose.select { |x| resultColumn.include? x[0].to_s.strip }.transpose
         end
         sheet.enterTheData(table, [table[0].index("Summary"), 50]) unless table.nil?
       end
 
       workBook.write(File.expand_path("Output/#{(k[0] + " " + k[1] + " " + "File" + " ").to_s + Date.today.strftime('%Y%m%d').gsub('-', '_')}.xlsx"))
     end
-    # FileUtils.rm_rf File.expand_path("Downloads")
+    FileUtils.rm_rf File.expand_path("Downloads")
   end
 end
 
@@ -109,3 +124,4 @@ Jira.new
     .readReferenceSheet
     .readInputSheet
     .fetchAndWrite
+
