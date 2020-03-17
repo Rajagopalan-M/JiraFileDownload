@@ -28,10 +28,11 @@ class WriteExcel
     @worksheet.auto_filter = filter
 
     arr.transpose.map { |x| x.map { |y| y.to_s.strip.chars.count }.max }.each_with_index do |length, index|
+      length = 35 if length > 50
       @worksheet.change_column_width(index, length + 1)
     end
 
-    @worksheet.change_column_width(*wrap) unless wrap.nil?
+    #@worksheet.change_column_width(wrap[0],wrap[1]) unless wrap.nil?
 
     arr.each_with_index do |row, rowIndex|
       row.each_with_index do |data, colIndex|
@@ -42,7 +43,7 @@ class WriteExcel
           @worksheet.sheet_data[rowIndex][colIndex].change_font_bold(true)
         end
         unless wrap.nil?
-          @worksheet.sheet_data[rowIndex][colIndex].change_text_wrap(true) if colIndex.eql? wrap[0]
+          @worksheet[rowIndex][colIndex].change_text_wrap(true) if colIndex.eql? wrap[0] or colIndex.eql? wrap[1]
         end
         @worksheet.sheet_data[rowIndex][colIndex].change_border(:top, 'thin')
         @worksheet.sheet_data[rowIndex][colIndex].change_border(:bottom, 'thin')
