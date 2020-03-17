@@ -23,12 +23,14 @@ class Jira
     @b.goto 'https://jira.sapiens.com/secure/Dashboard.jspa'
     if @b.text_field(name: 'os_username').present?
       @b.text_field(name: 'os_username').set 'rajagopalan.m'
-      @b.text_field(name: 'os_password').set '*****'
+      @b.text_field(name: 'os_password').set 'ceasar@123'
       @b.button(name: 'login').click
     end
     @b.element(link: 'Issues').click
     @b.element(link: 'Search for issues').click
     @b.element(link: 'Advanced').click unless @b.element(link: 'Basic').present?
+    @b.button(id: 'layout-switcher-button').click
+    @b.link(text: 'List View').click
     @workbook = Creek::Book.new 'Input.xlsx'
   end
 
@@ -49,6 +51,118 @@ class Jira
     self
   end
 
+  def newFetchAndWrite
+    @inputSheet.each.with_index do |(inputKey, inputValues), index|
+      outputExcel = WriteExcel.new
+      inputValues.each do |inputValue|
+        @b.textarea(id: 'advanced-search').set inputValue[3]
+        @b.button(xpath: "//div[@class='search-options-container']/button").click
+        sleep 2
+        totalResults = @b.span(class: ["results-count-total", "results-count-link"]).text.to_i
+        query = ""
+        queryArray = [inputValue[3]]
+        project = (inputValue[3].split(/(project\s+=\s+\w+)/).drop(1))[0].split('=').last.strip
+        moreResultsFlag = false
+        if totalResults > 1000
+          queryArray = []
+          moreResultsFlag = true
+          @b.span(title: 'Sort By Key').click
+          lastKeyValue = @b.a(xpath: "(//a[@class='issue-link'])[1]").text.split('-').last.to_i
+          timesValues = (lastKeyValue.to_f / 1000.00).ceil
+          startVal = 0
+          endVal = 1000
+          timesValues.times do |i|
+            if startVal.eql? 0
+              loop do
+                query = inputValue[3].split(/(project\s+=\s+\w+)/).drop(1).join(" AND key <= #{project}-#{endVal}")
+                @b.textarea(id: 'advanced-search').set query, :return
+                sleep 1
+                break unless @b.div(class: ["aui-message", "aui-message-error"]).present?
+                endVal += 1 if @b.div(class: ["aui-message", "aui-message-error"]).present?
+              end
+            elsif i.eql? (timesValues - 1)
+              query = inputValue[3].split(/(project\s+=\s+\w+)/).drop(1).join(" AND key > #{project}-#{startVal} AND key <= #{project}-#{lastKeyValue}")
+            else
+              loop do
+                query = inputValue[3].split(/(project\s+=\s+\w+)/).drop(1).join(" AND key > #{project}-#{startVal} AND key <= #{project}-#{endVal}")
+                @b.textarea(id: 'advanced-search').set query, :return
+                sleep 1
+                break unless @b.div(class: ["aui-message", "aui-message-error"]).present?
+                endVal += 1 if @b.div(class: ["aui-message", "aui-message-error"]).present?
+              end
+            end
+            startVal = endVal
+            if (endVal.modulo 1000).eql? 0
+              endVal += 1000
+            else
+              endVal = (endVal / 1000.0).ceil * 1000
+            end
+            queryArray << query
+          end #timesValues
+        end
+
+        csvTable = []
+        queryArray.each.with_index do |query, queryArrayIndex|
+          @b.textarea(id: 'advanced-search').set query, :tab
+          @b.button(xpath: "//div[@class='search-options-container']/button").click
+          #Select columns for output
+          @b.button(title: 'Columns').click
+          @reference[[inputValue[0], inputValue[2]]].each do |jiraScreenName|
+            @b.text_field(id: 'user-column-sparkler-input').set jiraScreenName[3]
+            @b.checkbox(xpath: "//ul[@class='aui-list-section aui-last']/li/label/em[normalize-space()='#{jiraScreenName[3]}' and not(preceding-sibling::span)]/preceding-sibling::input").set
+          end unless @reference[[inputValue[0], inputValue[2]]].nil?
+          sleep 0.5
+          @b.button(value: 'Done').click
+
+          #output in csv format
+          unless @b.div(class: ["aui-message", "error"]).present?
+            sleep 2
+            @b.scroll.to :top
+            @b.span(text: 'Export').click
+            sleep 1
+            @b.link(id: 'currentCsvFields').click
+            @b.button(id: 'csv-export-dialog-export-button').click
+            sleep 2
+          end
+
+          #read csv and put it in outputExcel.
+          table = CSV.read(Dir["Downloads/*.csv"].sort { |a, b| File.mtime(a) <=> File.mtime(b) }.last)
+          table.drop(1) if moreResultsFlag and queryArrayIndex > 0
+
+          sindex = table[0].index('Sprint')
+          count = table[0].count('Sprint')
+          processedCSVTable = []
+          table.map do |row|
+            newRow = []
+            newRow << row[sindex, count].uniq.join(',').chomp(',')
+            row.each.with_index { |val, ind| newRow << val unless (sindex..(sindex + (count - 1))).include? ind }
+            processedCSVTable << newRow
+          end
+
+          csvTable = csvTable + processedCSVTable
+        end #queryArray
+
+        excelSheet = outputExcel.createSheet inputValue[2]
+        outputTable = []
+        @reference[[inputValue[0], inputValue[2]]].each do |columnName|
+          csvTable.transpose.each do |transposeRow|
+            if transposeRow[0].eql? columnName[2]
+              transposeRow[0] = columnName[4]
+              outputTable << transposeRow
+            end
+          end
+        end
+        finalOutputTable = outputTable.transpose
+        excelSheet.enterTheData(finalOutputTable, [finalOutputTable[0].index("Summary"), finalOutputTable[0].index("Sprint"), 50])
+
+      rescue => e
+        puts e.message
+        @b.screenshot.save ("screenshot.png")
+      end
+      outputExcel.write(File.expand_path("Output/#{(inputKey[0] + " " + inputKey[1] + " " + "File" + " ").to_s + Date.today.strftime('%Y%m%d').gsub('-', '_')}.xlsx"))
+    end
+  end
+
   def fetchAndWrite
     @inputSheet.each.with_index(1) do |(k, arrs), index|
       #Read the Epic Key and Epic Name to form the Hash : (Epic Key=>Epic Name)
@@ -64,9 +178,9 @@ class Jira
         filename = Dir.glob(File.expand_path("Downloads\\*.*")).last
         filename.include? 'crdownload'
       end
-      table = CSV.read(Dir.glob(File.expand_path("Downloads/*")).first)
-      table = table.transpose.select { |x| x[0].eql? 'Issue key' or x[0].eql? 'Custom field (Epic Name)' }
-      issue_key = table[0].zip(table[1]).to_h
+      tablee = CSV.read(Dir.glob(File.expand_path("Downloads/*")).first)
+      table = tablee.transpose.select { |x| x[0].eql? 'Issue key' or x[0].eql? 'Custom field (Epic Name)' }
+      issue_key = table[0].zip(tablee[1]).to_h
       ####
       workBook = WriteExcel.new
       arrs.each do |arr|
@@ -104,6 +218,7 @@ class Jira
               filename.include? 'crdownload'
             end
             csvTable = CSV.read(filename)
+            p csvTable.transpose
             table << @reference[[arr[0], arr[2]]]
                          .map { |row| csvTable.transpose.select { |tableRow| tableRow[0].eql? row[2] }.pop }
                          .reject { |x| x.to_s.empty? }
@@ -152,5 +267,5 @@ end
 Jira.new
     .readReferenceSheet
     .readInputSheet
-    .fetchAndWrite
+    .newFetchAndWrite
 
