@@ -54,6 +54,13 @@ class WriteExcel
     self
   end
 
+  def zeroResult
+    @worksheet.add_cell(0, 0, 'ZERO RESULTS FOUND')
+    @worksheet.change_row_font_size(0, 20)
+    @worksheet.sheet_data[0][0].change_font_bold(true)
+    self
+  end
+
   def write filename
     @workBook.write(filename)
   end
