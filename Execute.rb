@@ -40,7 +40,7 @@ class Jira
   end
 
   def restFetchAndWrite
-    @inputSheet.each.with_index do |(inputKey, inputValues), index|
+    @inputSheet.each_with_index do |(inputKey, inputValues), index|
       if inputKey[1].downcase.eql? 'weekly'
         next unless Date.today.strftime("%A").downcase.eql? 'thursday'
       end
@@ -68,9 +68,9 @@ class Jira
             response = RestClient.get "#{@url}/api/2/search?jql=#{query}&fields=#{filterColumns}&maxResults=1000&startAt=#{n}", {Authorization: auth}
             parsedJson = JSON.parse(response.body)
             #retrieving data from JSON Response
-            parsedJson['issues'].each.with_index do |issuesHash, index|
+            parsedJson['issues'].each_with_index do |issuesHash, index|
               tempArr = []
-              refArr.each.with_index do |refHashQuery, index|
+              refArr.each_with_index do |refHashQuery, index|
                 tempIssue = issuesHash
                 refHashQuery = refHashQuery.split(',')
                 refHashQuery.count.times do |i|
@@ -115,8 +115,7 @@ class Jira
   ensure
     @programEndTime = Time.now
     seconds = (@programEndTime - @programStartTime).to_i
-    min = (seconds.to_f / 60).to_s.split('.').first.to_i
-    seconds = seconds - (min * 60)
+    min, seconds = seconds.divmod(60)
     @fw.puts "=================================="
     @fw.puts "Program Ended : Time : #{min}m.#{seconds}s"
     @fw.close
@@ -131,9 +130,9 @@ class Jira
 end
 
 puts "Enter username for Jira :"
-user = gets.chomp
+user = gets.strip.chomp
 puts "Enter password for Jira :"
-pass = gets.chomp
+pass = gets.strip.chomp
 
 Jira.new(user, pass)
     .readReferenceSheet
