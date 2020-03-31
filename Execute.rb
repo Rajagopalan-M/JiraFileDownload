@@ -23,7 +23,7 @@ class Jira
   end
 
   def readReferenceSheet
-    @referenceSheet = @workbook.sheets[1].rows.map(&:values)
+    @referenceSheet = @workbook.sheets[1].rows.map(&:values).delete_if(&:empty?)
 
     @referenceSheet.each_cons(2) do |first, last|
       last[0] ||= first[0] if (last[0].nil? or last[0].to_s.empty?)
@@ -35,7 +35,7 @@ class Jira
 
   def readInputSheet
     #Read the sheet and group the value by company name and Daily/Weekly
-    @inputSheet = @workbook.sheets[0].rows.map(&:values).drop(1).group_by { |x| [x[0], x[1]] }
+    @inputSheet = @workbook.sheets[0].rows.map(&:values).drop(1).delete_if(&:empty?).group_by { |x| [x[0], x[1]] }
     self
   end
 
