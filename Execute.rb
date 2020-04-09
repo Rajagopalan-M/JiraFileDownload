@@ -46,6 +46,7 @@ class Jira
       end
       outputExcel = WriteExcel.new
       inputValues.each do |inputValue|
+        raise "'Customer Name' or 'Tab' column values Not present / Mismatch in Reference sheet" unless @reference.has_key? [inputValue[0], inputValue[2]]
         excelSheet = outputExcel.createSheet inputValue[2]
 
         #Forming Query and Fetching total results
