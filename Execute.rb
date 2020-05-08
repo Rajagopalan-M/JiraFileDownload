@@ -35,14 +35,14 @@ class Jira
 
   def readInputSheet
     #Read the sheet and group the value by company name and Daily/Weekly
-    @inputSheet = @workbook.sheets[0].rows.map(&:values).drop(1).delete_if(&:empty?).group_by { |x| [x[0], x[1]] }
+    @inputSheet = @workbook.sheets[0].rows.map(&:values).drop(1).delete_if(&:empty?).group_by { |x| [x[0], x[1], x[4]] }
     self
   end
 
   def restFetchAndWrite
     @inputSheet.each_with_index do |(inputKey, inputValues), index|
       if inputKey[1].downcase.eql? 'weekly'
-        next unless Date.today.strftime("%A").downcase.eql? 'thursday'
+        next unless Date.today.strftime("%A").downcase.eql? inputKey[2].downcase
       end
       outputExcel = WriteExcel.new
       inputValues.each do |inputValue|
